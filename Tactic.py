@@ -19,9 +19,9 @@ class Tactic(object):
         :return: 若数据类型有问题，抛出错误；若无，返回None.
         """
         if not isinstance(df, pd.DataFrame):
-            raise TypeError()
-        elif not isinstance(df.index, pd.core.indexes.datetimes.DatetimeIndex):
-            raise TypeError()
+            raise TypeError('Basic data for calculating should be pandas DataFrame!')
+        elif not isinstance(df.index, pd.datetimes.DatetimeIndex):
+            raise TypeError('Index for DataFrame should be datetime type.')
         else:
             return None
 
@@ -71,21 +71,21 @@ class SMA(Tactic):
 
 class MACD(Tactic):
     def __init__(self):
-        super(MACD, self).__init__()
+        super().__init__()
 
-    @staticmethod
-    def ema(df: pd.DataFrame, period):
-        df['ewm'] = df.ewm(span=period, min_periods=period).mean()
-        return df['ewm']
-
-    def macd_algorithm(self, df, short, long, m):
+    def macd_algorithm(self, df, short, long, median):
         self.data_type_check(df=df)
-        short_ema = self.ema(df, short)
-        long_ema = self.ema(df, long)
-        dif = short_ema - long_ema
-        dea = self.ema(dif, m)
-        macd = (dif - dea) * 2
-        return macd
+        # 计算MACD指标
+        df['ema_short'] = df['close'].ewm(span=short, min_periods=short, adjust=False).mean()
+        df['ema_long'] = df['close'].ewm(span=long, min_periods=long, adjust=False).mean()
+        df['dif'] = df['ema_short'] - df['ema_long']
+        df['dea'] = df['dif'].ewm(span=median, min_periods=median).mean()
+        df['macd'] = 2 * (df['dif'] - df['dea'])
+
+        # 根据MACD指标决定交易指令
+        # MACD图出现金叉，即当天macd大于等于0且前一天小于0，说明可能存在涨势，此时买入；
+        
+        return df
 
 
 class RSI(Tactic):
