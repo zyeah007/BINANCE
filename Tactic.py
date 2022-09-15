@@ -2,7 +2,7 @@
 # coding=utf-8
 # author: charlie_zheng
 # 几个交易策略及效果回测
-
+import pandas
 import pandas as pd
 import numpy as np
 
@@ -20,7 +20,7 @@ class Tactic(object):
         """
         if not isinstance(df, pd.DataFrame):
             raise TypeError('Basic data for calculating should be pandas DataFrame!')
-        elif not isinstance(df.index, pd.datetimes.DatetimeIndex):
+        elif not isinstance(df.index, pd.core.indexes.datetimes.DatetimeIndex):
             raise TypeError('Index for DataFrame should be datetime type.')
         else:
             return None
@@ -32,6 +32,9 @@ class Tactic(object):
         :return: 累计基础收益率。
         """
         self.data_type_check(df=df)
+        df['Returns'] = np.log(df['close'] / df['close'].shift(1))
+        price_return = np.exp(df['Returns'].sum())
+        return price_return
 
     def tac_return(self, df: pd.DataFrame):
         """
@@ -40,8 +43,9 @@ class Tactic(object):
         :return: 交易策略的累计收益。
         """
         self.data_type_check(df)
-        df['Strategy_Return'] = df['Position'] * df['Price_Return']
-        strategy_return = np.exp(df['Strategy_Return'].sum())
+        df['Returns'] = np.log(df['close'] / df['close'].shift(1))
+        df['Strategy'] = df['Position'] * df['Returns']
+        strategy_return = np.exp(df['Strategy'].sum())
         return strategy_return
 
 
@@ -53,8 +57,8 @@ class SMA(Tactic):
         """
 
         :param df:
-        :param sma1:
-        :param sma2:
+        :param sma1:短期
+        :param sma2:长期
         :return:
         """
         self.data_type_check(df=df)
@@ -63,17 +67,21 @@ class SMA(Tactic):
         df['sma1'] = df['close'].rolling(window=sma1).mean()
         df['sma2'] = df['close'].rolling(window=sma2).mean()
         df.dropna(inplace=True)
+        return df.copy()
+
+    def sma_tac(self, df: pandas.DataFrame, sma1, sma2):
+        df = self.sma_algorithm(df, sma1, sma2)
         df['Position'] = np.where(df['sma1'] > df['sma2'], 1, -1)
         df['Strategy'] = df['Position'] * df['Returns']
         df.dropna(inplace=True)
-        return df
+        return df.copy()
 
 
 class MACD(Tactic):
     def __init__(self):
         super().__init__()
 
-    def macd_algorithm(self, df, short, long, median):
+    def macd_algorithm(self, df, short=12, long=26, median=9):
         self.data_type_check(df=df)
         # 计算MACD指标
         df['ema_short'] = df['close'].ewm(span=short, min_periods=short, adjust=False).mean()
@@ -81,11 +89,25 @@ class MACD(Tactic):
         df['dif'] = df['ema_short'] - df['ema_long']
         df['dea'] = df['dif'].ewm(span=median, min_periods=median).mean()
         df['macd'] = 2 * (df['dif'] - df['dea'])
+        df.dropna(inplace=True)
+        return df.copy()
 
-        # 根据MACD指标决定交易指令
-        # MACD图出现金叉，即当天macd大于等于0且前一天小于0，说明可能存在涨势，此时买入；
-        
-        return df
+    def ema_tac(self, df, short=12, long=26, median=9):
+        """
+        用EMA作为交易指标：
+        (1)短期快线由下向上穿越长期慢线，买入信号；
+        (2)短期快线由上向下穿越长期慢线，卖出信号。
+        :param df:
+        :param short:
+        :param long:
+        :param median:
+        :return:计算每期头寸（买入或卖出）的数据表
+        """
+        macd = self.macd_algorithm(df, short, long, median)
+        macd['Position'] = np.where(macd['dif'] > 0, 1, -1)
+        return macd.copy()
+
+
 
 
 class RSI(Tactic):
