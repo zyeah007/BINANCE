@@ -48,6 +48,31 @@ class Tactic(object):
         strategy_return = np.exp(df['Strategy'].sum())
         return strategy_return
 
+    def max_tac_drawdown(self, df: pd.DataFrame):
+        """
+        计算最大回撤
+        :param df:
+        :return:
+        """
+        self.data_type_check(df)
+        df['Returns'] = np.log(df['close'] / df['close'].shift(1))
+        df['Strategy'] = df['Position'] * df['Returns']
+        df['Cum_Stragety_Returns'] = df['Strategy'].cumsum()
+        max_drawdown = np.exp(df['Cum_Stragety_Returns'].min()) - 1
+        return round(max_drawdown, 4)
+
+    def max_price_drop(self, df: pd.DataFrame):
+        """
+        计算最大的累计价格跌幅
+        :param df:
+        :return:
+        """
+        self.data_type_check(df)
+        df['Returns'] = np.log(df['close'] / df['close'].shift(1))
+        df['Cum_Price_Returns'] = df['Returns'].cumsum()
+        max_drawdown = np.exp(df['Cum_Price_Returns'].min()) - 1
+        return round(max_drawdown, 4)
+
 
 class SMA(Tactic):
     def __init__(self):
@@ -69,9 +94,21 @@ class SMA(Tactic):
         df.dropna(inplace=True)
         return df.copy()
 
-    def sma_tac(self, df: pandas.DataFrame, sma1, sma2):
+    def sma_tac(self, df: pandas.DataFrame, sma1, sma2, enable_short=True):
+        """
+
+        :param df:
+        :param sma1:
+        :param sma2:
+        :param enable_short: 允许做空标识，若为True，则允许空头头寸；若为False，则不允许空头头寸。
+        :return:
+        """
+        short_position = -1
+        if not enable_short:
+            short_position = 0
         df = self.sma_algorithm(df, sma1, sma2)
-        df['Position'] = np.where(df['sma1'] > df['sma2'], 1, -1)
+        df['Position'] = np.where(df['sma1'] > df['sma2'], 1, short_position)
+        df['Position'] = df['Position'].shift(1)
         df['Strategy'] = df['Position'] * df['Returns']
         df.dropna(inplace=True)
         return df.copy()
@@ -92,7 +129,7 @@ class MACD(Tactic):
         df.dropna(inplace=True)
         return df.copy()
 
-    def ema_tac(self, df, short=12, long=26, median=9):
+    def ema_tac(self, df, short=12, long=26, median=9, enable_short=True):
         """
         用EMA作为交易指标：
         (1)短期快线由下向上穿越长期慢线，买入信号；
@@ -101,13 +138,48 @@ class MACD(Tactic):
         :param short:
         :param long:
         :param median:
+        :param enable_short
         :return:计算每期头寸（买入或卖出）的数据表
         """
+        short_position = -1
+        if not enable_short:
+            short_position = 0
         macd = self.macd_algorithm(df, short, long, median)
-        macd['Position'] = np.where(macd['dif'] > 0, 1, -1)
+        macd['Position'] = np.where(macd['dif'] > 0, 1, short_position)
+        macd['Position'] = macd['Position'].shift(1)
         return macd.copy()
 
+    @staticmethod
+    def dif_to_dea(x, enable_short=True):
+        short_position = -1
+        if not enable_short:
+            short_position = 0
+        if x['dif']> x['dea'] > 0:
+            res = 1
+        elif x['dif'] < x['dea'] < 0:
+            res = short_position
+        else:
+            res = 0
+        return res
 
+    def dea_tac(self, df, short=12, long=26, median=9, enable_short=True):
+        """
+        根据DIF快线和DEA慢线的交叉情况判断买卖信号。
+        本算法要求比单独DIF（即EMA）策略更严格，要求：
+        （1）DIF>0 且 DIF>DEA时（黄金交叉），买入；
+        （2）DIF<0 且 DIF<DEA时（死亡交叉），卖出；
+        （3）其余波段，不操作。
+        :param df:
+        :param short:
+        :param long:
+        :param median:
+        :param enable_short
+        :return:
+        """
+        macd = self.macd_algorithm(df, short, long, median)
+        macd['Position'] = macd.apply(lambda x: self.dif_to_dea(x, enable_short=enable_short), axis=1)
+        macd['Position'] = macd['Position'].shift(1)
+        return macd.copy()
 
 
 class RSI(Tactic):
