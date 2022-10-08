@@ -5,8 +5,6 @@
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-from DataRead import Read
-from Tactic import MACD, SMA
 
 mpl.rcParams['font.sans-serif'] = ['SimHei']
 mpl.rcParams['axes.unicode_minus'] = False

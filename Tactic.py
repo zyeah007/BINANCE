@@ -110,7 +110,7 @@ class SMA(Tactic):
     def __init__(self):
         super().__init__()
 
-    def sma_algorithm(self, df, sma1, sma2):
+    def sma_algorithm(self, df, sma1=12, sma2=26):
         """
 
         :param df:
@@ -125,7 +125,7 @@ class SMA(Tactic):
         df.dropna(inplace=True)
         return df.copy()
 
-    def sma_tac(self, df: pandas.DataFrame, sma1, sma2, enable_short=True):
+    def sma_tac(self, df: pandas.DataFrame, sma1=12, sma2=26, enable_short=True):
         """
 
         :param df:

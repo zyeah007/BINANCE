@@ -143,9 +143,11 @@ class Kline(Data):
         """
         pass
 
-    def get_data(self):
+    def get_data(self, startTime=None, endTime=None):
         """
 
+        :param startTime:
+        :param endTime:
         :return:
         """
         kline_api = 'api/v3/klines'
@@ -154,6 +156,16 @@ class Kline(Data):
             'interval': self.freq,
             'limit': 1000,
         }
+        if startTime is not None:
+            startTime = int(time.mktime(time.strptime(startTime, '%Y-%m-%d')) * 1000)
+            param_data.setdefault(
+                'startTime', startTime
+            )
+        if endTime is not None:
+            endTime = int(time.mktime(time.strptime(endTime, '%Y-%m-%d')) * 1000)
+            param_data.setdefault(
+                'endTime', endTime
+            )
         params = urlencode(param_data)
         url = os.path.join(BASE_URL, kline_api) + '?' + params
         r_info = {}
@@ -178,7 +190,7 @@ class Kline(Data):
 
     def save_data(self):
         """
-
+        更新本地文件保存的交易数据。
         :return:
         """
         base_dir = self.save_dir
@@ -206,6 +218,11 @@ class Kline(Data):
             json_data['data'] = refreshed_data
         self._save_data(json_data, save_path)
         print('数据已保存:%s' % file_name)
+        return None
+
+    def get_historical_data(self, market=None, interval=None, since=None):
+        
+        pass
 
 
 class Query(object):
@@ -251,9 +268,18 @@ class Query(object):
         for param in params_products:
             market = param[1]
             freq = param[0]
-            kline = Kline(market, freq)
-            kline.save_data()
+            self.query_kline(mkt=market, interval=freq)
+            # kline = Kline(market, freq)
+            # kline.save_data()
         return None
+
+    def complete_historical_kline_data(self, markets=None, intervals=None):
+        """
+        补充历史数据至系统最初时间点
+        :param markets:
+        :param intervals:
+        :return:
+        """
 
 
 def time_count(func):
