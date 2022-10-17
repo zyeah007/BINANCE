@@ -24,6 +24,8 @@ def mark_trade(df, col='close'):
             plt.scatter(idx, y, c=mark_color, marker='.', s=30)
             plt.annotate(mark_text, xy=(x, y), xytext=(x, y * (1 + 0.005)), weight='bold', color=mark_color)
 
+    return None
+
 
 def plot_dea_return(df):
     trade = df[df['Direction'] != ""].copy()
@@ -84,3 +86,12 @@ def plot_sma_return(df):
     ax3.legend()
 
     plt.show()
+
+
+def plot_multi_strategy_returns(df, tacs=['SMA']):
+    """
+    画出多个策略下的收益曲线
+    :param df:
+    :param tacs:
+    :return:
+    """

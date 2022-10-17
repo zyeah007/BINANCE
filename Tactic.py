@@ -5,6 +5,14 @@
 import pandas
 import pandas as pd
 import numpy as np
+import datetime
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+
+mpl.rcParams['font.sans-serif'] = ['SimHei']
+mpl.rcParams['axes.unicode_minus'] = False
+
+CURRENT_TACS = {'SMA', 'EMA', 'DEA'}
 
 
 class Tactic(object):
@@ -52,14 +60,17 @@ class Tactic(object):
         price_return = np.exp(df['Returns'].sum()) - 1
         return price_return
 
-    def tac_return(self, df: pd.DataFrame):
+    def tac_return(self, df: pd.DataFrame, start=None, end=None):
         """
         计算交易策略的累计收益。
         :param df: 包括Position， 每个区间的基础收益率。
+        :param start:
+        :param end
         :return: 交易策略的累计收益。
         """
         df = df.copy()
         self.data_type_check(df)
+        df = self.slice_by_date(df, start_date=start, end_date=end)
         strategy_return = np.exp(df['Strategy'].sum()) - 1
         return strategy_return
 
@@ -81,6 +92,26 @@ class Tactic(object):
             df['Cum_Price_Returns'] = df['Returns'].cumsum()
         return df.copy()
 
+    def max_drawdown(self, df:pd.DataFrame, col='Price'):
+        """
+
+        :param df:
+        :param col: 价格Price，或者策略Strategy
+        :return:
+        """
+        df = df.copy()
+        self.data_type_check(df)
+        df = self.complete_returns(df=df)
+
+        drawdowns = []
+        for i in range(0, len(df) - 2):
+            df_test = df.iloc[i:-1].copy()
+            df_test['cum'] = df_test[col].cumsum()
+            dd = df_test['cum'].min()
+            drawdowns.append(dd)
+        max_drawdown = round(np.exp(min(drawdowns)) - 1, 4)
+        return round(max_drawdown, 4)
+
     def max_tac_drawdown(self, df: pd.DataFrame):
         """
         计算最大回撤
@@ -88,22 +119,72 @@ class Tactic(object):
         :return:
         """
         df = df.copy()
-        self.data_type_check(df)
-        df = self.complete_returns(df=df)
-        max_drawdown = np.exp(df['Cum_Strategy_Returns'].min()) - 1
+        max_drawdown = self.max_drawdown(df=df, col='Strategy')
         return round(max_drawdown, 4)
 
-    def max_price_drop(self, df: pd.DataFrame):
+    def max_price_drawdown(self, df: pd.DataFrame):
         """
         计算最大的累计价格跌幅
         :param df:
         :return:
         """
         df = df.copy()
-        self.data_type_check(df)
-        df = self.complete_returns(df=df)
-        max_drawdown = np.exp(df['Cum_Price_Returns'].min()) - 1
+        max_drawdown = self.max_drawdown(df=df, col='Returns')
         return round(max_drawdown, 4)
+
+    @staticmethod
+    def mark_trade(df, col='close'):
+        for idx in df.index:
+            mark_text = df.loc[idx, 'Direction']
+            x = idx
+            y = df.loc[idx, col]
+            if mark_text == "B":
+                mark_color = 'r'
+                plt.scatter(idx, y, c=mark_color, marker='.', s=30)
+                plt.annotate(mark_text, xy=(x, y), xytext=(x, y * (1 - 0.005)), weight='bold', color=mark_color)
+            else:
+                mark_color = 'g'
+                plt.scatter(idx, y, c=mark_color, marker='.', s=30)
+                plt.annotate(mark_text, xy=(x, y), xytext=(x, y * (1 + 0.005)), weight='bold', color=mark_color)
+        return None
+
+    @staticmethod
+    def slice_by_date(df, start_date=None, end_date=None, observe_num=None):
+        """
+        根据日期对原有数据进行切片
+        :param df: 原数据
+        :param start_date:开始日期，若为None，则为数据本身最早日期；否则为数据本身日期与start_date孰晚。
+        :param end_date:结束日期，若为None，则为数据本身最晚日期；否则为数据本身日期与end」_date孰早。
+        :param observe_num: 观察数据量（倒序）。如果为None,则为全部。
+        :return: 切片后的数据
+        """
+        df = df.copy()
+        first_index = datetime.datetime.strptime(str(df.index[0]), '%Y-%m-%d %X')
+        last_index = datetime.datetime.strptime(str(df.index[-1]), '%Y-%m-%d %X')
+        if start_date is not None:
+            start = datetime.datetime.strptime(start_date, '%Y-%m-%d')
+            if start < first_index:
+                start_date = str(df.index[0])
+            else:
+                start_date = start_date
+        else:
+            start_date = str(df.index[0])
+
+        if end_date is not None:
+            end = datetime.datetime.strptime(end_date, '%Y-%m-%d')
+            if end > last_index:
+                end_date = str(df.index[-1])
+            else:
+                end_date = end_date
+        else:
+            end_date = str(df.index[-1])
+        df = df[start_date:end_date].copy()
+        if observe_num is not None:
+            if observe_num > len(df):
+                df = df.copy()
+            else:
+                df = df.tail(observe_num).copy()
+        return df
 
 
 class SMA(Tactic):
@@ -145,6 +226,39 @@ class SMA(Tactic):
         sma = self.deal_direction(df=sma)
         sma.dropna(inplace=True)
         return sma.copy()
+
+    def plot_sma_return(self, df, start=None, end=None):
+
+        trade = df[df['Direction'] != ""].copy()
+        trade = self.slice_by_date(trade, start_date=start, end_date=end)
+        fig, ax = plt.subplots(3, 1, figsize=(15, 15))
+
+        ax1 = plt.subplot(311)
+        ax1.plot(df.index, df['Cum_Price_Returns'], color='g', label='Price')
+        ax1.plot(df.index, df['Cum_Strategy_Returns'], color='b', label='Strategy')
+        self.mark_trade(trade, 'Cum_Price_Returns')
+        ax1.legend(loc='upper left')
+
+        ax4 = ax1.twinx()
+        ax4.plot(df.index, df['Position'], c='black', ls=':', label='Position')
+        ax4.set_ylabel('Position', color='black')
+        ax4.tick_params('y', colors='r')
+        ax4.legend(loc='lower left')
+        plt.axhline(y=0.0, c='r', lw=2, ls='--')
+
+        ax2 = plt.subplot(312)
+        ax2.plot(df.index, df['close'], c='b')
+        self.mark_trade(df)
+        ax2.set_ylabel('close')
+
+        ax3 = plt.subplot(313)
+        plt.axhline(y=0.0, c='black', lw=2, ls='--')
+        ax3.plot(df.index, df['sma1'], color='g', label='short')
+        ax3.plot(df.index, df['sma2'], color='r', label='long')
+        ax3.set_ylabel('sma')
+        ax3.legend()
+
+        plt.show()
 
 
 class MACD(Tactic):
@@ -235,6 +349,183 @@ class MACD(Tactic):
         macd = self.deal_direction(df=macd)
         return macd.copy()
 
+    def plot_dea_return(self, df, start=None, end=None):
+        """
+        绘制DEA策略下的收益图。共绘出3幅图：
+        1）该策略收益与基础价格收益的时间曲线比较；
+        2）价格走势图并标出该策略下的买卖点位；
+        3）买卖信号指标曲线
+        :param df: 已计算全部指标后的时间序列数据.
+        :param start:
+        :param end:
+        :return:
+        """
+        trade = df[df['Direction'] != ""].copy()
+        trade = self.slice_by_date(trade, start_date=start, end_date=end)
+        fig, ax = plt.subplots(3, 1, figsize=(15, 15))
+
+        ax1 = plt.subplot(311)
+        ax1.plot(df.index, df['Cum_Price_Returns'], color='y', label='Price')
+        ax1.plot(df.index, df['Cum_Strategy_Returns'], color='b', label='Strategy')
+        self.mark_trade(trade, 'Cum_Price_Returns')
+        ax1.legend(loc='upper left')
+
+        ax4 = ax1.twinx()
+        ax4.plot(df.index, df['Position'], c='black', ls=':')
+        ax4.set_ylabel('Position', color='black')
+        ax4.tick_params('y', colors='r')
+        plt.axhline(y=0.0, c='r', lw=2, ls='--')
+
+        ax2 = plt.subplot(312)
+        ax2.plot(df.index, df['close'], c='b')
+        self.mark_trade(trade)
+        ax2.set_ylabel('close')
+
+        ax3 = plt.subplot(313)
+        plt.axhline(y=0.0, c='black', lw=2, ls='--')
+        ax3.plot(df.index, df['dea'], color='g', label='dea')
+        ax3.plot(df.index, df['dif'], color='r', label='dif')
+        ax3.set_ylabel('macd')
+        ax3.legend()
+        plt.show()
+
+        return None
+
+    def plot_ema_return(self, df, start=None, end=None):
+        """
+        绘制EMA策略下的收益图。共绘出3幅图：
+        1）该策略收益与基础价格收益的时间曲线比较；
+        2）价格走势图并标出该策略下的买卖点位；
+        3）买卖信号指标曲线
+        :param df: 已计算全部指标后的时间序列数据.
+        :param start:
+        :param end
+        :return:
+        """
+        trade = df[df['Direction'] != ""].copy()
+        trade = self.slice_by_date(trade, start_date=start, end_date=end)
+        fig, ax = plt.subplots(3, 1, figsize=(15, 15))
+
+        ax1 = plt.subplot(311)
+        ax1.plot(df.index, df['Cum_Price_Returns'], color='y', label='Price')
+        ax1.plot(df.index, df['Cum_Strategy_Returns'], color='b', label='Strategy')
+        self.mark_trade(trade, 'Cum_Price_Returns')
+        ax1.legend(loc='upper left')
+
+        ax4 = ax1.twinx()
+        ax4.plot(df.index, df['Position'], c='black', ls=':')
+        ax4.set_ylabel('Position', color='black')
+        ax4.tick_params('y', colors='r')
+        plt.axhline(y=0.0, c='r', lw=2, ls='--')
+
+        ax2 = plt.subplot(312)
+        ax2.plot(df.index, df['close'], c='b')
+        self.mark_trade(trade)
+        ax2.set_ylabel('close')
+
+        ax3 = plt.subplot(313)
+        plt.axhline(y=0.0, c='black', lw=2, ls='--')
+        ax3.plot(df.index, df['dif'], color='r', label='dif')
+        ax3.set_ylabel('macd')
+        ax3.legend()
+        plt.show()
+
+        return None
+
 
 class RSI(Tactic):
     pass
+
+
+class MultiTacs(object):
+    """
+    多个策略的收益比较及收益曲线
+    """
+
+    def __init__(self):
+        pass
+
+    @staticmethod
+    def get_tac_method(tac_name):
+        sma = SMA()
+        macd = MACD()
+        method_dicts = {
+            'SMA': sma.sma_tac,
+            'DEA': macd.dea_tac,
+            'EMA': macd.ema_tac,
+        }
+        return method_dicts[tac_name]
+
+    @staticmethod
+    def _tacs_check(tacs=None):
+        if tacs is None:
+            raise ValueError('No TAC INPUT. You should at least input one tac name.')
+        elif not isinstance(tacs, list):
+            raise TypeError('NOT LIST INPUT! You must input tacs as a list!')
+        elif not set(tacs) <= CURRENT_TACS:
+            raise ValueError("TACS NOT EXIST. You must only input tac names as follows: 'SMA', 'DEA', 'EMA'. ")
+        else:
+            return None
+
+    def multi_tac_results(self, kline, tacs=None, start=None, end=None, short_flag=True):
+        """
+
+        :param kline: 通过导入DataRead.Read类读取Kline数据
+        :param tacs:
+        :param start:
+        :param end:
+        :param short_flag:
+        :return:
+        """
+        self._tacs_check(tacs=tacs)
+        tacs_results = []
+        for tac_name in tacs:
+            tactic = Tactic()
+            tac = self.get_tac_method(tac_name)
+            df_tac = tac(df=kline, enable_short=short_flag)
+            df_tac = tactic.slice_by_date(df_tac, start_date=start, end_date=end)
+            df_tac = tactic.complete_returns(df_tac)
+            tac_res = {
+                'tac_name': tac_name,
+                'tac_df': df_tac.copy()
+            }
+            tacs_results.append(tac_res)
+        return tacs_results
+
+    def multi_tac_returns(self, kline, tacs=None, start=None, end=None, short_flag=True):
+        tacs_results = self.multi_tac_results(kline, tacs=tacs, start=start, end=end, short_flag=short_flag)
+        res = []
+        for tac in tacs_results:
+            tactic = Tactic()
+            tac_name = tac['tac_name']
+            df_tac = tac['tac_df'].copy()
+            tac_return_res = {
+                'tac_name': tac_name,
+                'price_return': tactic.base_return(df=df_tac),
+                'strategy_return': tactic.tac_return(df=df_tac),
+                'price_drawdown': tactic.max_price_drawdown(df=df_tac),
+                'strategy_drawdown': tactic.max_tac_drawdown(df=df_tac),
+            }
+            res.append(tac_return_res)
+        multi_tac_returns = pd.DataFrame(res)
+        multi_tac_returns.sort_values(by=['strategy_return', 'strategy_drawdown'], ascending=[False, False],
+                                      inplace=True)
+        return multi_tac_returns
+
+    def plot_multi_tac_returns(self, kline, tacs=None, start=None, end=None, short_flag=True):
+        tacs_results = self.multi_tac_results(kline, tacs=tacs, start=start, end=end, short_flag=short_flag)
+        fig = plt.figure(figsize=(10, 6))
+        ax1 = plt.subplot(111)
+        df_price = tacs_results[0]['tac_df']
+        df_index = df_price.index
+
+        ax1.plot(df_index, df_price['Cum_Price_Returns'], c='k', label='Price')
+        for tac in tacs_results:
+            tac_name = tac['tac_name']
+            df = tac['tac_df']
+            ax1.plot(df_index, df['Cum_Strategy_Returns'], label=tac_name)
+
+        plt.axhline(y=0.0, c='black', lw=1, ls='--')
+        plt.legend()
+        plt.show()
+        return None
