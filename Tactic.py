@@ -92,17 +92,16 @@ class Tactic(object):
             df['Cum_Price_Returns'] = df['Returns'].cumsum()
         return df.copy()
 
-    def max_drawdown(self, df:pd.DataFrame, col='Price'):
+    def max_drawdown(self, df: pd.DataFrame, col='Returns'):
         """
 
         :param df:
-        :param col: 价格Price，或者策略Strategy
+        :param col: 价格Returns，或者策略Strategy
         :return:
         """
         df = df.copy()
         self.data_type_check(df)
         df = self.complete_returns(df=df)
-
         drawdowns = []
         for i in range(0, len(df) - 2):
             df_test = df.iloc[i:-1].copy()
@@ -110,7 +109,7 @@ class Tactic(object):
             dd = df_test['cum'].min()
             drawdowns.append(dd)
         max_drawdown = round(np.exp(min(drawdowns)) - 1, 4)
-        return round(max_drawdown, 4)
+        return max_drawdown
 
     def max_tac_drawdown(self, df: pd.DataFrame):
         """
@@ -120,7 +119,7 @@ class Tactic(object):
         """
         df = df.copy()
         max_drawdown = self.max_drawdown(df=df, col='Strategy')
-        return round(max_drawdown, 4)
+        return max_drawdown
 
     def max_price_drawdown(self, df: pd.DataFrame):
         """
@@ -130,7 +129,7 @@ class Tactic(object):
         """
         df = df.copy()
         max_drawdown = self.max_drawdown(df=df, col='Returns')
-        return round(max_drawdown, 4)
+        return max_drawdown
 
     @staticmethod
     def mark_trade(df, col='close'):
@@ -186,6 +185,30 @@ class Tactic(object):
                 df = df.tail(observe_num).copy()
         return df
 
+    @staticmethod
+    def trade_call(df: pd.DataFrame):
+        """
+        确定交易方向及价格
+        :param df: 
+        :return: tuple(trade_date, trade_direction, quote_price)
+        """
+        df = df.copy()
+        closing_data = df.iloc[-1].copy()
+        trade_date = str(closing_data.name)
+        position = closing_data['Position']
+        if position == 1:
+            deal_direction = 'Buy'
+        elif position == -1:
+            deal_direction = 'Sell'
+        else:
+            deal_direction = 'Close Out'
+        quote_price = closing_data['open']
+        print('Trade Date: ', trade_date)
+        print('Position: ', deal_direction)
+        if deal_direction != 'Close Out':
+            print('Quote Price: ', quote_price)
+        return None
+
 
 class SMA(Tactic):
     def __init__(self):
@@ -228,7 +251,6 @@ class SMA(Tactic):
         return sma.copy()
 
     def plot_sma_return(self, df, start=None, end=None):
-
         trade = df[df['Direction'] != ""].copy()
         trade = self.slice_by_date(trade, start_date=start, end_date=end)
         fig, ax = plt.subplots(3, 1, figsize=(15, 15))
@@ -514,7 +536,7 @@ class MultiTacs(object):
 
     def plot_multi_tac_returns(self, kline, tacs=None, start=None, end=None, short_flag=True):
         tacs_results = self.multi_tac_results(kline, tacs=tacs, start=start, end=end, short_flag=short_flag)
-        fig = plt.figure(figsize=(10, 6))
+        fig = plt.figure(figsize=(15, 6))
         ax1 = plt.subplot(111)
         df_price = tacs_results[0]['tac_df']
         df_index = df_price.index
