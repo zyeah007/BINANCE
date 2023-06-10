@@ -46,7 +46,6 @@ class Tactic(object):
         self.data_type_check(df=df)
         df['pos_chg'] = df['Position'] - df['Position'].shift(1)
         df['Direction'] = df['pos_chg'].apply(self.buy_or_sell)
-        df['Direction'] = df['Direction'].shift(-1)
         return df.copy()
 
     def base_return(self, df: pd.DataFrame):
@@ -57,6 +56,9 @@ class Tactic(object):
         """
         df = df.copy()
         self.data_type_check(df=df)
+        if 'Returns' not in df.columns:
+            df['Returns'] = np.log(df['close'] / df['close'].shift(1))
+            df.fillna(value={'Returns': 0}, inplace=True)
         price_return = np.exp(df['Returns'].sum()) - 1
         return price_return
 
@@ -71,6 +73,7 @@ class Tactic(object):
         df = df.copy()
         self.data_type_check(df)
         df = self.slice_by_date(df, start_date=start, end_date=end)
+        df = self.complete_returns(df)
         strategy_return = np.exp(df['Strategy'].sum()) - 1
         return strategy_return
 
@@ -133,6 +136,8 @@ class Tactic(object):
 
     @staticmethod
     def mark_trade(df, col='close'):
+        if len(df) == 0:
+            return None
         for idx in df.index:
             mark_text = df.loc[idx, 'Direction']
             x = idx
@@ -158,6 +163,8 @@ class Tactic(object):
         :return: 切片后的数据
         """
         df = df.copy()
+        if len(df) == 0:
+            return pd.DataFrame()
         first_index = datetime.datetime.strptime(str(df.index[0]), '%Y-%m-%d %X')
         last_index = datetime.datetime.strptime(str(df.index[-1]), '%Y-%m-%d %X')
         if start_date is not None:
@@ -196,18 +203,35 @@ class Tactic(object):
         closing_data = df.iloc[-1].copy()
         trade_date = str(closing_data.name)
         position = closing_data['Position']
+        price_return = 100 * (np.exp(closing_data['Returns']) - 1)
+        strategy_return = 100 * (np.exp(closing_data['Strategy']) - 1)
         if position == 1:
-            deal_direction = 'Buy'
+            deal_direction = 'LONG'
         elif position == -1:
-            deal_direction = 'Sell'
+            deal_direction = 'SHORT'
         else:
             deal_direction = 'Close Out'
         quote_price = closing_data['open']
+        closing_price = closing_data['close']
         print('Trade Date: ', trade_date)
-        print('Position: ', deal_direction)
+        print('Deal: ', deal_direction)
+        print('Position: ', position)
         if deal_direction != 'Close Out':
             print('Quote Price: ', quote_price)
+        print('Closing Price:', closing_price)
+        print('Price Return:', '%.2f%%' % price_return)
+        print('Strategy Return:', '%.2f%%' % strategy_return)
         return None
+
+    @staticmethod
+    def plot_price_return(df: pd.DataFrame):
+        df = df.copy()
+        fig, ax = plt.subplots(1, 1, figsize=(15, 5))
+        ax1 = plt.subplot(111)
+        ax1.plot(df.index, df['close'], color='r', label='close')
+        ax1.set_ylabel('close')
+        ax1.legend()
+        plt.show()
 
 
 class SMA(Tactic):
@@ -247,7 +271,6 @@ class SMA(Tactic):
         sma['Position'] = sma['Position'].shift(1)
         sma.fillna(value={'Position': 0}, inplace=True)
         sma = self.deal_direction(df=sma)
-        sma.dropna(inplace=True)
         return sma.copy()
 
     def plot_sma_return(self, df, start=None, end=None):
@@ -257,9 +280,10 @@ class SMA(Tactic):
 
         ax1 = plt.subplot(311)
         ax1.plot(df.index, df['Cum_Price_Returns'], color='g', label='Price')
-        ax1.plot(df.index, df['Cum_Strategy_Returns'], color='b', label='Strategy')
+        ax1.plot(df.index, df['Cum_Strategy_Returns'], color='b', label='SMA')
         self.mark_trade(trade, 'Cum_Price_Returns')
         ax1.legend(loc='upper left')
+        plt.axhline(y=0.0, c='k', lw=2, ls='--')
 
         ax4 = ax1.twinx()
         ax4.plot(df.index, df['Position'], c='black', ls=':', label='Position')
@@ -388,9 +412,10 @@ class MACD(Tactic):
 
         ax1 = plt.subplot(311)
         ax1.plot(df.index, df['Cum_Price_Returns'], color='y', label='Price')
-        ax1.plot(df.index, df['Cum_Strategy_Returns'], color='b', label='Strategy')
+        ax1.plot(df.index, df['Cum_Strategy_Returns'], color='b', label='DEA')
         self.mark_trade(trade, 'Cum_Price_Returns')
         ax1.legend(loc='upper left')
+        plt.axhline(y=0.0, c='k', lw=2, ls='--')
 
         ax4 = ax1.twinx()
         ax4.plot(df.index, df['Position'], c='black', ls=':')
@@ -404,7 +429,7 @@ class MACD(Tactic):
         ax2.set_ylabel('close')
 
         ax3 = plt.subplot(313)
-        plt.axhline(y=0.0, c='black', lw=2, ls='--')
+        # plt.axhline(y=0.0, c='black', lw=2, ls='--')
         ax3.plot(df.index, df['dea'], color='g', label='dea')
         ax3.plot(df.index, df['dif'], color='r', label='dif')
         ax3.set_ylabel('macd')
@@ -430,9 +455,10 @@ class MACD(Tactic):
 
         ax1 = plt.subplot(311)
         ax1.plot(df.index, df['Cum_Price_Returns'], color='y', label='Price')
-        ax1.plot(df.index, df['Cum_Strategy_Returns'], color='b', label='Strategy')
+        ax1.plot(df.index, df['Cum_Strategy_Returns'], color='b', label='EMA')
         self.mark_trade(trade, 'Cum_Price_Returns')
         ax1.legend(loc='upper left')
+        plt.axhline(y=0.0, c='k', lw=2, ls='--')
 
         ax4 = ax1.twinx()
         ax4.plot(df.index, df['Position'], c='black', ls=':')
@@ -530,6 +556,9 @@ class MultiTacs(object):
             }
             res.append(tac_return_res)
         multi_tac_returns = pd.DataFrame(res)
+        multi_tac_returns['strategy_diff'] = multi_tac_returns['strategy_return'] - multi_tac_returns['price_return']
+        col = ['tac_name', 'price_return', 'strategy_return', 'strategy_diff', 'price_drawdown', 'strategy_drawdown']
+        multi_tac_returns = multi_tac_returns[col].copy()
         multi_tac_returns.sort_values(by=['strategy_return', 'strategy_drawdown'], ascending=[False, False],
                                       inplace=True)
         return multi_tac_returns
