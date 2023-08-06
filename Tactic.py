@@ -226,7 +226,6 @@ class Tactic(object):
     @staticmethod
     def plot_price_return(df: pd.DataFrame):
         df = df.copy()
-        fig, ax = plt.subplots(1, 1, figsize=(15, 5))
         ax1 = plt.subplot(111)
         ax1.plot(df.index, df['close'], color='r', label='close')
         ax1.set_ylabel('close')
@@ -565,7 +564,6 @@ class MultiTacs(object):
 
     def plot_multi_tac_returns(self, kline, tacs=None, start=None, end=None, short_flag=True):
         tacs_results = self.multi_tac_results(kline, tacs=tacs, start=start, end=end, short_flag=short_flag)
-        fig = plt.figure(figsize=(15, 6))
         ax1 = plt.subplot(111)
         df_price = tacs_results[0]['tac_df']
         df_index = df_price.index

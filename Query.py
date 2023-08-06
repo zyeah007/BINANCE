@@ -11,7 +11,8 @@ from DataQuery import Query, time_count, connection_test
 def manual_update():
     query = Query()
     # query.update_all_ticker()
-    query.update_kline_by_markets(markets=['BTCUSDT', 'ETHUSDT'], intervals=['1d'], auto=False)
+    # query.update_kline_by_markets(markets=None, intervals=['3d'], auto=True)
+    query.query_top_n_markets(n=100, intervals=['3d'], auto=True)
     # query.complete_historical_kline_data()
 
 
@@ -25,5 +26,5 @@ def auto_update():
 
 
 if __name__ == '__main__':
-    # manual_update()
-    auto_update()
+    manual_update()
+    # auto_update()

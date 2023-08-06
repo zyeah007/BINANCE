@@ -11,9 +11,12 @@ import operator
 import pandas as pd
 import numpy as np
 import time
+from itertools import *
+import math
+from statsmodels.tsa.stattools import adfuller as adf_test
+from tqdm import tqdm
 from DataQuery import Ticker, Query
 import matplotlib as mpl
-# import matplotlib.pyplot as plt
 import pyecharts.options as opts
 from pyecharts.charts import Line
 
@@ -357,3 +360,174 @@ class Analysis(object):
         if markets is not None:
             df = df[df['symbol'].isin(markets)].copy()
         return df
+
+    @staticmethod
+    def price_to_btc(markets, interval='1d', bench_market='BTCUSDT', start=None, end=None, scaled=True):
+        """
+        价格相对于BTC的比率走势
+        :return:
+        """
+        read = Read()
+        all_markets = markets + [bench_market]
+        res_df = pd.DataFrame()
+        for mkt in all_markets:
+            df = read.read_kline(market=mkt, freq_type=interval)[['close']]
+            df = df.loc[start:end].copy()
+            df.rename(columns={'close': mkt}, inplace=True)
+            res_df = pd.concat([res_df, df[[mkt]]], axis=1)
+        for mkt in markets:
+            res_df[mkt] = res_df[mkt] / res_df[bench_market]
+            if scaled:
+                res_df[mkt] = (res_df[mkt] - res_df[mkt].min()) / (res_df[mkt].max() - res_df[mkt].min())
+        if scaled:
+            res_df[bench_market] = (res_df[bench_market] - res_df[bench_market].min()) / (
+                    res_df[bench_market].max() - res_df[bench_market].min())
+        else:
+            res_df.drop(bench_market, axis=1, inplace=True)
+        return res_df
+
+    def plot_price_to_bench(self, markets, interval='1d', bench_market='BTCUSDT', start=None, end=None, scaled=True):
+        df = self.price_to_btc(markets=markets, interval=interval, bench_market=bench_market, start=start, end=end,
+                               scaled=scaled)
+        return self.pyecharts_line_plot(df)
+
+    @staticmethod
+    def price_volatility(markets, interval='1d', start=None, end=None, window=15):
+        """
+        计算每期的价格振幅
+        :param markets:
+        :param interval:
+        :param start:
+        :param end:
+        :param window
+        :return: 以时间为索引，每期的价格振幅
+        """
+        read = Read()
+        res_df = pd.DataFrame()
+        for mkt in markets:
+            kline = read.read_kline(market=mkt, freq_type=interval)
+            kline = kline.loc[start:end].copy()
+            kline['volatility'] = (kline['high'] - kline['low']) / kline['open']
+            kline[mkt] = kline['volatility'].rolling(window=window).mean()
+            df = kline[[mkt]]
+            res_df = pd.concat([res_df, df], axis=1)
+        return res_df
+
+    def plot_price_volatility(self, markets, interval='1d', start=None, end=None, window=15):
+        df = self.price_volatility(markets=markets, interval=interval, start=start, end=end, window=window)
+        return self.pyecharts_line_plot(df)
+
+    @staticmethod
+    def high_above_close(markets, interval='1d', start=None, end=None, window=15):
+        """
+        计算每期最高价高出收盘价幅度
+        :param markets:
+        :param interval:
+        :param start:
+        :param end:
+        :param window:
+        :return:
+        """
+        read = Read()
+        res_df = pd.DataFrame()
+        for mkt in markets:
+            kline = read.read_kline(market=mkt, freq_type=interval)
+            kline = kline.loc[start:end].copy()
+            kline['high_above_close'] = (kline['high'] - kline['close']) / kline['close']
+            kline[mkt] = kline['high_above_close'].rolling(window=window).mean()
+            df = kline[[mkt]]
+            res_df = pd.concat([res_df, df], axis=1)
+        return res_df
+
+    @staticmethod
+    def low_below_close(markets, interval='1d', start=None, end=None, window=15):
+        """
+        计算每期最高价高出收盘价幅度
+        :param markets:
+        :param interval:
+        :param start:
+        :param end:
+        :param window:
+        :return:
+        """
+        read = Read()
+        res_df = pd.DataFrame()
+        for mkt in markets:
+            kline = read.read_kline(market=mkt, freq_type=interval)
+            kline = kline.loc[start:end].copy()
+            kline['low_below_close'] = (kline['close'] - kline['low']) / kline['close']
+            kline[mkt] = kline['low_below_close'].rolling(window=window).mean()
+            df = kline[[mkt]]
+            res_df = pd.concat([res_df, df], axis=1)
+        return res_df
+
+    def plot_high_above_close(self, markets, interval='1d', start=None, end=None, window=15):
+        df = self.high_above_close(markets=markets, interval=interval, start=start, end=end, window=window)
+        return self.pyecharts_line_plot(df)
+
+    def plot_low_below_close(self, markets, interval='1d', start=None, end=None, window=15):
+        df = self.low_below_close(markets=markets, interval=interval, start=start, end=end, window=window)
+        return self.pyecharts_line_plot(df)
+
+    def return_diff_pairing(self, interval='1d', start=None, end=None, num=10, least_obs=30, daily_diff_threshold=0.02):
+        ticker = Ticker()
+        total_markets = ticker.top_n_markets(n=num)
+        market_pairs = combinations(total_markets, 2)
+        pair_counts = math.factorial(num) // (math.factorial(2) * math.factorial(num - 2))
+        res = []
+        cols = ['market1', 'market2', 'return_diff', 'daily_diff', 'p_value']
+        for pair in tqdm(market_pairs, total=pair_counts, ncols=90, desc='迭代计算中...'):
+            mkt_1 = pair[0]
+            mkt_2 = pair[1]
+            merge_return = self.merge_data_for_markets(markets=pair, start=start, end=end, interval=interval,
+                                                       col='Return')
+            merge_return['diff'] = merge_return[mkt_1[:-4]] - merge_return[mkt_2[:-4]]
+            # ADF检验前，需对待验数据处理：剔除空值，且观测量至少least_obs个
+            merge_return.dropna(subset=['diff'], inplace=True)
+            if len(merge_return) < least_obs:
+                continue
+            if len(merge_return.loc[end:end]) == 0:  # 结束日期仍有交易数据
+                continue
+            adf_res = adf_test(merge_return['diff'])
+            p_value = adf_res[1]
+            if p_value < 0.001:
+                p_value = round(p_value, 6)
+                diff = round(merge_return['diff'].mean(), 6)
+                daily_diff = round(merge_return['diff'].resample(rule='1D').sum().mean(), 6)
+                if diff > 0:
+                    res.append([mkt_1, mkt_2, diff, daily_diff, p_value])
+                else:
+                    res.append([mkt_2, mkt_1, -diff, daily_diff, p_value])
+            else:
+                continue
+        df = pd.DataFrame(res, columns=cols)
+        df = df[df['daily_diff'] >= daily_diff_threshold]
+        df = df.sort_values(by=['return_diff'], ascending=False, ignore_index=True)
+        return df
+
+    def return_diff(self, market_pair, interval='1d', start=None, end=None, least_obs=30):
+        mkt_1 = market_pair[0]
+        mkt_2 = market_pair[1]
+        merge_return = self.merge_data_for_markets(markets=market_pair, start=start, end=end, interval=interval,
+                                                   col='Return')
+        merge_return['diff'] = merge_return[mkt_1[:-4]] - merge_return[mkt_2[:-4]]
+        # ADF检验前，需对待验数据处理：剔除空值，且观测量至少least_obs个
+        merge_return.dropna(subset=['diff'], inplace=True)
+        if len(merge_return) < least_obs:
+            print('观测记录不足<%d>个.' % least_obs)
+            return None
+        if len(merge_return.loc[end:end]) == 0:  # 结束日期仍有交易数据
+            print('所选货币已停止交易!')
+            return None
+        adf_res = adf_test(merge_return['diff'])
+        mean_diff = round(merge_return['diff'].mean(), 6)
+        daily_diff = round(merge_return['diff'].resample(rule='1D').sum().mean(), 6)
+        p_value = round(adf_res[1], 8)
+        res = {
+            'market_1': mkt_1,
+            'market_2': mkt_2,
+            'return_diff': mean_diff,
+            'daily_diff': daily_diff,
+            'p_value': p_value
+        }
+        return res
