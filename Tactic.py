@@ -195,7 +195,7 @@ class Tactic(object):
     @staticmethod
     def trade_call(df: pd.DataFrame):
         """
-        确定交易方向及价格
+        输出交易结果
         :param df: 
         :return: tuple(trade_date, trade_direction, quote_price)
         """
@@ -226,7 +226,8 @@ class Tactic(object):
     @staticmethod
     def plot_price_return(df: pd.DataFrame):
         df = df.copy()
-        ax1 = plt.subplot(111)
+        fig = plt.figure(figsize=(10, 8))
+        ax1 = fig.add_subplot(111)
         ax1.plot(df.index, df['close'], color='r', label='close')
         ax1.set_ylabel('close')
         ax1.legend()
@@ -277,7 +278,7 @@ class SMA(Tactic):
         trade = self.slice_by_date(trade, start_date=start, end_date=end)
         fig, ax = plt.subplots(3, 1, figsize=(15, 15))
 
-        ax1 = plt.subplot(311)
+        ax1 = ax[1]
         ax1.plot(df.index, df['Cum_Price_Returns'], color='g', label='Price')
         ax1.plot(df.index, df['Cum_Strategy_Returns'], color='b', label='SMA')
         self.mark_trade(trade, 'Cum_Price_Returns')
@@ -291,12 +292,12 @@ class SMA(Tactic):
         ax4.legend(loc='lower left')
         plt.axhline(y=0.0, c='r', lw=2, ls='--')
 
-        ax2 = plt.subplot(312)
+        ax2 = ax[2]
         ax2.plot(df.index, df['close'], c='b')
         self.mark_trade(df)
         ax2.set_ylabel('close')
 
-        ax3 = plt.subplot(313)
+        ax3 = ax[3]
         plt.axhline(y=0.0, c='black', lw=2, ls='--')
         ax3.plot(df.index, df['sma1'], color='g', label='short')
         ax3.plot(df.index, df['sma2'], color='r', label='long')
@@ -409,7 +410,7 @@ class MACD(Tactic):
         trade = self.slice_by_date(trade, start_date=start, end_date=end)
         fig, ax = plt.subplots(3, 1, figsize=(15, 15))
 
-        ax1 = plt.subplot(311)
+        ax1 = ax[1]
         ax1.plot(df.index, df['Cum_Price_Returns'], color='y', label='Price')
         ax1.plot(df.index, df['Cum_Strategy_Returns'], color='b', label='DEA')
         self.mark_trade(trade, 'Cum_Price_Returns')
@@ -452,7 +453,7 @@ class MACD(Tactic):
         trade = self.slice_by_date(trade, start_date=start, end_date=end)
         fig, ax = plt.subplots(3, 1, figsize=(15, 15))
 
-        ax1 = plt.subplot(311)
+        ax1 = ax[1]
         ax1.plot(df.index, df['Cum_Price_Returns'], color='y', label='Price')
         ax1.plot(df.index, df['Cum_Strategy_Returns'], color='b', label='EMA')
         self.mark_trade(trade, 'Cum_Price_Returns')
@@ -564,7 +565,8 @@ class MultiTacs(object):
 
     def plot_multi_tac_returns(self, kline, tacs=None, start=None, end=None, short_flag=True):
         tacs_results = self.multi_tac_results(kline, tacs=tacs, start=start, end=end, short_flag=short_flag)
-        ax1 = plt.subplot(111)
+        fig = plt.figure(figsize=(10, 8))
+        ax1 = fig.add_subplot(111)
         df_price = tacs_results[0]['tac_df']
         df_index = df_price.index
 

@@ -16,6 +16,7 @@ HEADERS = {
 import pandas as pd
 import os
 import time
+from datetime import datetime
 import sys
 import requests
 import json
@@ -26,7 +27,7 @@ from urllib.parse import urlencode, urljoin
 from itertools import product
 from tqdm import tqdm
 
-BASE_URL = 'https://api.binance.com'
+BASE_URL = 'https://api.binance.us'
 
 
 class Data(object):
@@ -93,6 +94,8 @@ class Ticker(Data):
             os.mkdir(base_dir)
         file_name = self.save_file_name
         save_path = os.path.join(base_dir, file_name)
+        if os.path.exists(save_path):
+            os.remove(save_path)
         data = self.get_all_ticker()
         self._save_data(data, save_path)
 
@@ -122,15 +125,25 @@ class Ticker(Data):
     def ticker_of_usdt(self):
         return self.ticker_of_quote(quote='USDT')
 
-    def top_n_markets(self, n=None, col='quoteVolume', ascending=False):
+    def top_n_markets(self, n=None, col='quoteVolume', flag_date=None, ascending=False):
         """
         获取币值前n位的货币，区分出moneyType 和 symbol
         :param n:
         :param col:
+        :param flag_date:确定日期，在改该日期之前的数据被剔除。输入的格式为:%Y-%m-%d
         :param ascending:
         :return:
         """
         df = self.ticker_of_usdt()
+        # 数据剔除
+        # 如果没有输入date, 则默认是当前日期
+        if flag_date is None:
+            flag_date = datetime.today().date()
+            today = datetime.combine(flag_date, datetime.min.time())
+            today_as_ts = int(today.timestamp() * 1000)
+        else:
+            today_as_ts = int(time.mktime(time.strptime(flag_date, '%Y-%m-%d')) * 1000)
+        df = df[df['closeTime'] >= today_as_ts].copy()
         df = df.sort_values(by=[col], ascending=[ascending], ignore_index=True)
         if n is None:
             top_n_markets = list(df['symbol'].values)
@@ -276,7 +289,6 @@ class Kline(Data):
         # 如果从来没有获取过，首先正常获取一遍最新的数据
         if not os.path.exists(save_path):  # 即原来没有保存过该类型的文件
             self.save_data()
-
         # 获取当前数据的起止日期
         while True:
             with codecs.open(save_path, 'r', 'utf-8') as old_f:
@@ -292,8 +304,9 @@ class Kline(Data):
             if early_start_ts < old_start_ts:
                 self.save_data(startTime=start)
             else:
-                # print('%s-%s数据已更新至最早时间.' % (self.market, self.freq))
+                print('%s-%s数据已更新至最早时间.' % (self.market, self.freq))
                 break
+        return None
 
 
 class Query(object):
@@ -305,6 +318,7 @@ class Query(object):
     def update_all_ticker():
         ticker = Ticker()
         ticker.save_all_ticker_data()
+        print('已更新ticker数据.')
 
     @property
     def valid_markets(self):
@@ -343,7 +357,7 @@ class Query(object):
             intervals = ['1d', '4h', '1w', '3d']
         # params_products = product(intervals, markets)
         for freq in intervals:
-            for i in tqdm(range(len(markets)), ncols=90, desc='获取<%s>频次数据...' % freq):
+            for i in tqdm(range(len(markets)), ncols=90, desc='获取<%s>频次数据:' % freq):
                 market = markets[i]
                 self.query_kline(mkt=market, interval=freq, auto=auto)
         # for param in params_products:
@@ -352,7 +366,7 @@ class Query(object):
         #     self.query_kline(mkt=market, interval=freq, auto=auto)
         return None
 
-    def query_top_n_markets(self, n=50, intervals=None, auto=True):
+    def query_top_n_markets(self, n=None, intervals=None, auto=True):
         ticker = Ticker()
         top_n_markets = ticker.top_n_markets(n=n)
         self.update_kline_by_markets(markets=top_n_markets, intervals=intervals, auto=auto)
@@ -365,8 +379,11 @@ class Query(object):
         :param intervals:
         :return:
         """
+        print('补全历史数据...')
         if markets is None:
-            markets = self.valid_markets
+            # markets = self.valid_markets
+            ticker = Ticker()
+            markets = ticker.top_n_markets()
         if intervals is None:
             intervals = ['1d', '4h', '1w', '3d']
         params_products = product(intervals, markets)
@@ -410,7 +427,7 @@ def connection_test():
     测试网络连通性。如果正常连接，则继续执行；否则，退出程序。
     :return:
     """
-    url = 'https://api.binance.com/api/v3/ping'
+    url = urljoin(BASE_URL, 'api/v3/ping')
     r = requests.get(url)
     data = r.json()
     if data != {}:

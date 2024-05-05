@@ -12,8 +12,8 @@ def manual_update():
     query = Query()
     # query.update_all_ticker()
     # query.update_kline_by_markets(markets=None, intervals=['3d'], auto=True)
-    query.query_top_n_markets(n=100, intervals=['3d'], auto=True)
-    # query.complete_historical_kline_data()
+    query.query_top_n_markets(intervals=['3d'], auto=True)
+    # query.complete_historical_kline_data(markets=['BTCUSDT'])
 
 
 @time_count
@@ -22,7 +22,7 @@ def auto_update():
     query = Query()
     query.update_all_ticker()
     # query.update_kline_by_markets(auto=True)
-    query.query_top_n_markets(n=100, auto=True)
+    query.query_top_n_markets(n=None, auto=True)
 
 
 if __name__ == '__main__':
